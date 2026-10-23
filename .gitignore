@@ -1,0 +1,26 @@
+# TypeScript / build output
+out/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Packaged extension artifacts
+*.vsix
+
+# Local environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Editor / OS
+.vscode/*.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

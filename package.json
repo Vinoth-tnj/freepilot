@@ -1,0 +1,85 @@
+{
+  "name": "freepilot",
+  "displayName": "FreePilot",
+  "description": "An open-source, intelligent AI coding agent for VS Code",
+  "version": "0.1.0",
+  "publisher": "Vinoth-tnj",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "freepilot.openChat",
+        "title": "FreePilot: Open Chat"
+      },
+      {
+        "command": "freepilot.configure",
+        "title": "FreePilot: Configure"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "freepilot",
+          "title": "FreePilot",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "freepilot": [
+        {
+          "type": "webview",
+          "id": "freepilot.chatView",
+          "name": "Agent Chat",
+          "location": "secondarySidebar"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "FreePilot",
+      "properties": {
+        "freepilot.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "FreeLLMAPI OpenAI-compatible base URL."
+        },
+        "freepilot.model": {
+          "type": "string",
+          "default": "auto",
+          "description": "FreeLLMAPI model or routing profile, e.g. auto."
+        },
+        "freepilot.maxAgentSteps": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum tool-calling iterations per request."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "openai": "^4.80.0"
+  }
+}
