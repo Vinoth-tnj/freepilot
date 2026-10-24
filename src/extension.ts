@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { Agent } from "./agent";
 import { ChatViewProvider } from "./ui/chatView";
 
-const SECRET_KEY = "";
+const SECRET_KEY = "freepilot.apiKey";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("[FreePilot] Extension activated");

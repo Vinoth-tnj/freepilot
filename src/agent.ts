@@ -5,6 +5,15 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/reso
 type ToolName = "list_files" | "read_file" | "search_code" | "propose_file_change";
 type ToolArgs = Record<string, unknown>;
 
+export interface ActivityData {
+  undoable?: boolean;
+  path?: string;
+  oldContent?: string;
+  existedBefore?: boolean;
+}
+
+export type ProgressReportFn = (message: string, activity?: ActivityData) => void;
+
 const tools: ChatCompletionTool[] = [
   {
     type: "function",
@@ -58,7 +67,7 @@ const tools: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "propose_file_change",
-      description: "Propose creating or replacing a text file. The user must approve before changes are applied. For existing files, provide the complete intended file content.",
+      description: "Propose creating or replacing a text file. For existing files, provide the complete intended file content.",
       parameters: {
         type: "object",
         properties: {
@@ -86,7 +95,7 @@ export class Agent {
 
   async run(
     userRequest: string,
-    report: (message: string) => void
+    report: ProgressReportFn
   ): Promise<string> {
     const messages: ChatCompletionMessageParam[] = [
       {
@@ -94,7 +103,7 @@ export class Agent {
         content: `You are FreePilot, a careful coding agent inside VS Code.
 You can inspect the active workspace using tools and propose file changes.
 Workflow: inspect relevant files, explain a concise plan, then use propose_file_change for each file you want to create or modify.
-Never claim a change was applied; proposals require explicit user approval.
+Never claim a change was applied unless reported as such.
 Keep context focused. Do not read secrets, .env files, private keys, credentials, binaries, or files outside the workspace.
 Use relative workspace paths. Avoid destructive changes. If requirements are ambiguous, ask a question.
 For existing files, read them first and propose complete updated content. Keep changes minimal.
@@ -190,7 +199,7 @@ You may use list_files, read_file, search_code, and propose_file_change.`
     return target;
   }
 
-  private async executeTool(name: ToolName, args: ToolArgs, report: (message: string) => void): Promise<string> {
+  private async executeTool(name: ToolName, args: ToolArgs, report: ProgressReportFn): Promise<string> {
     if (name === "list_files") {
       const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
       const limit = Math.min(Math.max(Number(args.limit) || 60, 1), 100);
@@ -254,6 +263,23 @@ You may use list_files, read_file, search_code, and propose_file_change.`
       if (content.length > 200_000) throw new Error("Proposed file exceeds the 200 KB limit.");
       const exists = await vscode.workspace.fs.stat(uri).then(() => true, () => false);
       const oldText = exists ? new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)) : "";
+
+      const config = vscode.workspace.getConfiguration("freepilot");
+      const applyMode = config.get<string>("applyMode", "manual");
+
+      if (applyMode === "auto") {
+        const parent = vscode.Uri.joinPath(uri, "..");
+        await vscode.workspace.fs.createDirectory(parent);
+        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
+        report(`Auto-applied change to ${args.path}`, {
+          undoable: true,
+          path: String(args.path),
+          oldContent: oldText,
+          existedBefore: exists
+        });
+        return JSON.stringify({ status: "applied", path: args.path });
+      }
+
       const choice = await vscode.window.showWarningMessage(
         `\`${exists ? "Replace" : "Create"} ${String(args.path)}? Reason: ${String(args.reason).slice(0, 250)}\``,
         { modal: true, detail: `\`Proposed content: ${content.length} characters. Review the file diff before approving.\`` },

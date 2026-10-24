@@ -20,7 +20,7 @@
 | **Workspace Inspection** | List, read, and search files within the active workspace (respects `.gitignore`). |
 | **Tool‑Calling Agent** | Multi‑step reasoning loop that can iterate up to `maxAgentSteps` calls. |
 | **Secure API Key Storage** | Keys stored in VS Code `SecretStorage`; never committed to repo. |
-| **Approval‑First Workflow** | Every file change requires an explicit “Review & Apply” confirmation. |
+| **Approval‑First Workflow** | Every file change requires an explicit “Review & Apply” confirmation (or auto-applies with undo option). |
 | **Webview Chat UI** | In‑VS Code chat interface with status, answers, and error reporting. |
 
 ---
@@ -33,15 +33,17 @@ flowchart TD
     B -->|Step 1| C["Select tool: list_files / read_file / search_code"]
     C --> D["Model receives context & tool output"]
     D -->|Tool returned| E{"Model decides next step"}
-    E -->|propose_file_change| F["Show diff approval modal"]
-    F -->|"User clicks 'Apply Change'"| G["Write file to disk"]
-    G --> H["Report success / ask for next prompt"]
-    E -->|no tool call| I["Return natural language answer"]
-    I --> J["Display answer in Webview"]
-    H --> K["Prompt user for new request"]
+    E -->|propose_file_change| F{"freepilot.applyMode"}
+    F -->|manual| G["Show diff approval modal"]
+    G -->|"User clicks 'Apply Change'"| H["Write file to disk"]
+    F -->|auto| H["Write file to disk & show Undo in Chat"]
+    H --> I["Report success / ask for next prompt"]
+    E -->|no tool call| J["Return natural language answer"]
+    J --> K["Display answer in Webview"]
+    I --> L["Prompt user for new request"]
 ```
 
-**TL;DR:** User types → Agent selects tool → Tool executes inside workspace → Model decides next action → Diff shown → You approve → File written → Agent loops or finishes.
+**TL;DR:** User types → Agent selects tool → Tool executes inside workspace → Model decides next action → Diff shown (or auto-applied with Undo option based on mode) → File written → Agent loops or finishes.
 
 ---
 
@@ -79,7 +81,7 @@ code .
 - Press **F5** to start the Extension Development Host.
 - The **FreePilot** icon appears in the Activity Bar.
 - Open the **Agent Chat** panel and send a prompt like:
-  > \"List the main project files and explain the architecture.\"
+  > "List the main project files and explain the architecture."
 
 - The agent will list files, possibly read some, and answer.
 
@@ -105,6 +107,7 @@ All settings are defined under the **FreePilot** category in VS Code settings (`
 | `freepilot.baseUrl` | `string` | `""` | FreeLLMAPI OpenAI‑compatible base URL (leave empty for default). |
 | `freepilot.model` | `string` | `"auto"` | Model or routing profile, e.g. `auto`, `gpt-4o`, `claude-3.5-sonnet`. |
 | `freepilot.maxAgentSteps` | `number` | `8` | Maximum tool‑call iterations per request (1‑20). |
+| `freepilot.applyMode` | `string` | `"manual"` | Permission mode: `"manual"` (requires diff approval) or `"auto"` (applies changes directly with undo option). |
 | `freepilot.apikey` | `string` | — | **Not a VS Code setting** — stored securely in VS Code SecretStorage via the *Configure* command. |
 
 > **Tip:** After changing any setting, reload the extension (`Ctrl+Shift+P` → *Developer: Reload Window*) or restart the host.
@@ -121,7 +124,7 @@ We love contributions! Please follow these steps to help improve **FreePilot**:
 4. **Test locally** with `npm run watch` (or press F5) to verify no regressions.  
 5. **Commit** using conventional commits style (optional but appreciated):  
    ```bash
-   git commit -m \"feat: add X functionality\"
+   git commit -m "feat: add X functionality"
    ```  
 6. **Push** to your fork: `git push origin feature/short-description`.  
 7. **Open a Pull Request** against the upstream `main` branch.  
@@ -149,7 +152,7 @@ MIT License
 Copyright (c) 2026 Vinoth_Kumar
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the \"Software\"), to deal
+of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
@@ -158,7 +161,7 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER

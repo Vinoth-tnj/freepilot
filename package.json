@@ -27,7 +27,7 @@
       }
     ],
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "freepilot",
           "title": "FreePilot",
@@ -40,8 +40,7 @@
         {
           "type": "webview",
           "id": "freepilot.chatView",
-          "name": "Agent Chat",
-          "location": "secondarySidebar"
+          "name": "Agent Chat"
         }
       ]
     },
@@ -64,6 +63,15 @@
           "minimum": 1,
           "maximum": 20,
           "description": "Maximum tool-calling iterations per request."
+        },
+        "freepilot.applyMode": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "auto"
+          ],
+          "default": "manual",
+          "description": "Execution permission mode for proposed file changes: 'manual' (requires user diff approval) or 'auto' (applies changes directly without blocking modals)."
         }
       }
     }

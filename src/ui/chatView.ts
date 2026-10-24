@@ -23,13 +23,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await vscode.commands.executeCommand("freepilot.configure");
         return;
       }
+      if (message?.type === "undo") {
+        const relPath = message.path;
+        if (typeof relPath === "string" && relPath) {
+          try {
+            const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+            if (!root) throw new Error("No workspace folder open.");
+            const uri = vscode.Uri.joinPath(root, relPath);
+            if (message.existedBefore) {
+              await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(message.oldContent ?? ""));
+            } else {
+              await vscode.workspace.fs.delete(uri, { recursive: false, useTrash: false });
+            }
+            this.addMessage("status", `Undone change to ${relPath}`);
+            this.post({ type: "undoSuccess", id: message.id });
+          } catch (err) {
+            const detail = err instanceof Error ? err.message : String(err);
+            this.addMessage("error", `Failed to undo change to ${relPath}: ${detail}`);
+          }
+        }
+        return;
+      }
       if (message?.type !== "ask" || typeof message.text !== "string" || !message.text.trim()) return;
-      
+
       this.addMessage("status", "Thinking and inspecting workspace…");
       try {
         if (!this.factory) throw new Error("Agent is not ready.");
         const agent = await this.factory();
-        const answer = await agent.run(message.text.slice(0, 12000), text => this.addMessage("status", text));
+        const answer = await agent.run(message.text.slice(0, 12000), (text, activity) => {
+          if (activity) {
+            this.post({ type: "activity", text, ...activity });
+          } else {
+            this.addMessage("status", text);
+          }
+        });
         this.addMessage("assistant", answer);
       } catch (e) {
         this.addMessage("error", e instanceof Error ? e.message : String(e));
@@ -120,6 +147,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       padding: 4px;
       background: transparent;
     }
+    .msg.activity {
+      background-color: var(--vscode-editor-background);
+      border: 1px dashed var(--vscode-widget-border, var(--vscode-panel-border));
+      color: var(--vscode-foreground);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      border-radius: var(--radius);
+    }
+    .undo-btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      background: var(--vscode-button-secondaryBackground, var(--vscode-editor-inactiveSelectionBackground));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .undo-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
+    }
+    .undo-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
     .msg.error {
       background-color: var(--vscode-inputValidation-errorBackground);
       color: var(--vscode-inputValidation-errorForeground);
@@ -197,7 +253,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <div class="input-area">
     <textarea id="prompt" placeholder="Ask FreePilot anything (Ctrl+Enter to send)…"></textarea>
     <div class="row">
-      <span class="hint">Edits require your approval</span>
+      <span class="hint">FreePilot Agent</span>
       <button id="send">Send</button>
     </div>
   </div>
@@ -213,6 +269,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       el.textContent = text;
       messages.appendChild(el);
       el.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+
+    function addActivityMessage(data) {
+      const el = document.createElement('div');
+      el.className = 'msg activity';
+      
+      const span = document.createElement('span');
+      span.textContent = data.text;
+      el.appendChild(span);
+
+      if (data.undoable) {
+        const id = 'undo-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+        el.dataset.undoId = id;
+        const btn = document.createElement('button');
+        btn.className = 'undo-btn';
+        btn.textContent = 'Undo';
+        btn.addEventListener('click', () => {
+          btn.disabled = true;
+          btn.textContent = 'Undoing…';
+          vscode.postMessage({
+            type: 'undo',
+            id: id,
+            path: data.path,
+            oldContent: data.oldContent,
+            existedBefore: data.existedBefore
+          });
+        });
+        el.appendChild(btn);
+      }
+
+      messages.appendChild(el);
+      el.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+
+    function handleUndoSuccess(id) {
+      const el = document.querySelector('[data-undo-id="' + id + '"]');
+      if (el) {
+        const btn = el.querySelector('.undo-btn');
+        if (btn) {
+          btn.textContent = 'Undone';
+          btn.disabled = true;
+        }
+      }
     }
 
     document.getElementById('send').addEventListener('click', () => {
@@ -237,6 +336,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     window.addEventListener('message', event => {
       const m = event.data;
       if (m.type === 'status') addMessage(m.text, 'status');
+      else if (m.type === 'activity') addActivityMessage(m);
+      else if (m.type === 'undoSuccess') handleUndoSuccess(m.id);
       else if (m.type === 'assistant' || m.type === 'answer') addMessage(m.text, 'assistant');
       else if (m.type === 'error') addMessage(m.text, 'error');
     });
