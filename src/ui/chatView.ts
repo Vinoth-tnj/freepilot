@@ -29,7 +29,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const selected = await vscode.window.showQuickPick(list, { placeHolder: "Select Model from FreeLLMAPI" });
           if (selected) {
             await vscode.workspace.getConfiguration("freepilot").update("model", selected, vscode.ConfigurationTarget.Global);
-            this.addMessage("status", `Active model updated to: ${selected}`);
+            this.post({ type: "notification", text: `Active model updated to: ${selected}` });
           }
         } catch (err) {
           const detail = err instanceof Error ? err.message : String(err);
@@ -46,7 +46,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (chosen) {
           await vscode.workspace.getConfiguration("freepilot").update("applyMode", chosen.value, vscode.ConfigurationTarget.Global);
           this.post({ type: "permissionUpdated", mode: chosen.label });
-          this.addMessage("status", `Permission mode set to: ${chosen.label}`);
+          this.post({ type: "notification", text: `Permission mode set to: ${chosen.label}` });
         }
         return;
       }
@@ -72,18 +72,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             } else {
               await vscode.workspace.fs.delete(uri, { recursive: false, useTrash: false });
             }
-            this.addMessage("status", `Undone change to ${relPath}`);
+            this.post({ type: "notification", text: `Undone change to ${relPath}` });
             this.post({ type: "undoSuccess", id: message.id });
           } catch (err) {
             const detail = err instanceof Error ? err.message : String(err);
-            this.addMessage("error", `Failed to undo change to ${relPath}: ${detail}`);
+            this.post({ type: "error", text: `Failed to undo change to ${relPath}: ${detail}` });
           }
         }
         return;
       }
       if (message?.type !== "ask" || typeof message.text !== "string" || !message.text.trim()) return;
 
-      this.addMessage("status", "Thinking and inspecting workspace…");
+      this.post({ type: "loading", text: "Thinking and inspecting workspace…" });
       try {
         if (!this.factory) throw new Error("Agent is not ready.");
         const agent = await this.factory();
@@ -91,22 +91,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (activity) {
             this.post({ type: "activity", text, ...activity });
           } else {
-            this.addMessage("status", text);
+            this.post({ type: "loading", text });
           }
         });
-        this.addMessage("assistant", answer);
+        this.post({ type: "assistant", text: answer });
       } catch (e) {
-        this.addMessage("error", e instanceof Error ? e.message : String(e));
+        this.post({ type: "error", text: e instanceof Error ? e.message : String(e) });
       }
     });
   }
 
   private post(message: unknown) {
     this.view?.webview.postMessage(message);
-  }
-
-  private addMessage(type: string, text: string) {
-    this.post({ type, text });
   }
 
   private getHtml(): string {
@@ -217,8 +213,67 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       font-size: 11px;
       text-align: center;
       padding: 4px;
-      background: transparent;
     }
+    .msg.error {
+      background-color: var(--vscode-inputValidation-errorBackground);
+      color: var(--vscode-inputValidation-errorForeground);
+      border: 1px solid var(--vscode-inputValidation-errorBorder);
+    }
+    
+    /* Copilot-style Collapsible Thought & Agent Steps */
+    .agent-progress-box {
+      border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+      background-color: var(--vscode-editor-background);
+      border-radius: var(--radius);
+      font-size: 12px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    details.agent-accordion {
+      padding: 8px 12px;
+    }
+    details.agent-accordion summary {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--vscode-descriptionForeground);
+      font-weight: 500;
+      outline: none;
+      user-select: none;
+    }
+    details.agent-accordion summary::-webkit-details-marker {
+      display: none;
+    }
+    details.agent-accordion summary::before {
+      content: "▶";
+      font-size: 9px;
+      transition: transform 0.2s;
+    }
+    details.agent-accordion[open] summary::before {
+      transform: rotate(90deg);
+    }
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--vscode-progressBar-background, #007acc);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .steps-list {
+      margin-top: 8px;
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+    }
+
     .msg.activity {
       background-color: var(--vscode-editor-background);
       border: 1px dashed var(--vscode-widget-border, var(--vscode-panel-border));
@@ -230,6 +285,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       padding: 8px 12px;
       font-size: 12px;
       border-radius: var(--radius);
+      margin-bottom: 4px;
     }
     .undo-btn {
       padding: 3px 8px;
@@ -243,11 +299,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     .undo-btn:hover {
       background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
-    }
-    .msg.error {
-      background-color: var(--vscode-inputValidation-errorBackground);
-      color: var(--vscode-inputValidation-errorForeground);
-      border: 1px solid var(--vscode-inputValidation-errorBorder);
     }
     .input-container {
       padding: 12px;
@@ -433,6 +484,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const promptBox = document.getElementById('prompt');
     const contextContainer = document.getElementById('context-container');
     let attachedFile = '';
+    let currentProgressBox = null;
+    let currentStepsList = null;
+    let currentSummaryText = null;
 
     function addMessage(text, cls='') {
       if (welcomeView) {
@@ -443,6 +497,78 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       el.textContent = text;
       messages.appendChild(el);
       el.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+
+    function addNotification(text) {
+      if (welcomeView) {
+        welcomeView.remove();
+      }
+      const el = document.createElement('div');
+      el.className = 'msg status';
+      el.textContent = text;
+      messages.appendChild(el);
+      el.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+
+    function handleLoading(text) {
+      if (welcomeView) {
+        welcomeView.remove();
+      }
+      if (!currentProgressBox) {
+        currentProgressBox = document.createElement('div');
+        currentProgressBox.className = 'agent-progress-box';
+
+        const details = document.createElement('details');
+        details.className = 'agent-accordion';
+        details.open = true; // Open while working
+
+        const summary = document.createElement('summary');
+        const spinner = document.createElement('div');
+        spinner.className = 'spinner';
+        
+        currentSummaryText = document.createElement('span');
+        currentSummaryText.textContent = text;
+
+        summary.appendChild(spinner);
+        summary.appendChild(currentSummaryText);
+        details.appendChild(summary);
+
+        currentStepsList = document.createElement('div');
+        currentStepsList.className = 'steps-list';
+        details.appendChild(currentStepsList);
+
+        currentProgressBox.appendChild(details);
+        messages.appendChild(currentProgressBox);
+      } else {
+        if (currentSummaryText) {
+          currentSummaryText.textContent = text;
+        }
+        const stepItem = document.createElement('div');
+        stepItem.textContent = text;
+        if (currentStepsList) {
+          currentStepsList.appendChild(stepItem);
+        }
+      }
+      currentProgressBox.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    }
+
+    function finalizeProgress(successText = "Agent finished successfully") {
+      if (currentProgressBox) {
+        const details = currentProgressBox.querySelector('details');
+        const spinner = currentProgressBox.querySelector('.spinner');
+        if (spinner) {
+          spinner.remove(); // Remove spinner when done
+        }
+        if (currentSummaryText) {
+          currentSummaryText.textContent = successText;
+        }
+        if (details) {
+          details.open = false; // Automatically minimize/collapse like Copilot!
+        }
+        currentProgressBox = null;
+        currentStepsList = null;
+        currentSummaryText = null;
+      }
     }
 
     function addActivityMessage(data) {
@@ -529,9 +655,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     window.addEventListener('message', event => {
       const m = event.data;
-      if (m.type === 'status') addMessage(m.text, 'status');
-      else if (m.type === 'activity') addActivityMessage(m);
-      else if (m.type === 'undoSuccess') handleUndoSuccess(m.id);
+      if (m.type === 'loading') {
+        handleLoading(m.text);
+      }
+      else if (m.type === 'notification') {
+        addNotification(m.text);
+      }
+      else if (m.type === 'activity') {
+        addActivityMessage(m);
+      }
+      else if (m.type === 'undoSuccess') {
+        handleUndoSuccess(m.id);
+      }
       else if (m.type === 'contextAttached') {
         attachedFile = m.path;
         contextContainer.innerHTML = '';
@@ -551,8 +686,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       else if (m.type === 'permissionUpdated') {
         document.getElementById('perm-label').textContent = '🛡️ ' + m.mode;
       }
-      else if (m.type === 'assistant' || m.type === 'answer') addMessage(m.text, 'assistant');
-      else if (m.type === 'error') addMessage(m.text, 'error');
+      else if (m.type === 'assistant' || m.type === 'answer') {
+        finalizeProgress("Thought & completed steps");
+        addMessage(m.text, 'assistant');
+      }
+      else if (m.type === 'error') {
+        finalizeProgress("Agent encountered an error");
+        addMessage(m.text, 'error');
+      }
     });
   </script>
 </body>
