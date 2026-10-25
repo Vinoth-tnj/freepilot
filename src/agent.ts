@@ -93,6 +93,34 @@ export class Agent {
     this.maxSteps = maxSteps;
   }
 
+  /**
+   * Fetches only active/ready models from FreeLLMAPI via `/v1/models?available=true`.
+   */
+  public async listModels(): Promise<string[]> {
+    const config = vscode.workspace.getConfiguration("freepilot");
+    let baseUrl = config.get<string>("baseUrl", "http://127.0.0.1:31415").trim();
+    if (!baseUrl.endsWith("/v1") && !baseUrl.endsWith("/v1/")) {
+      baseUrl = baseUrl.replace(/\/+$/, "") + "/v1";
+    }
+
+    try {
+      // Fetch available/ready models directly from FreeLLMAPI REST endpoint
+      const res = await fetch(`${baseUrl}/models?available=true`);
+      if (res.ok) {
+        const body = (await res.json()) as { data?: Array<{ id: string }> };
+        if (body.data && Array.isArray(body.data)) {
+          const models = body.data.map(m => m.id).filter(Boolean);
+          if (models.length > 0) {
+            return models;
+          }
+        }
+      }
+    } catch {
+      // Ignore network errors and fall back
+    }
+    return ["auto"];
+  }
+
   async run(
     userRequest: string,
     report: ProgressReportFn
@@ -187,7 +215,7 @@ You may use list_files, read_file, search_code, and propose_file_change.`
 
   private async resolveSafe(pathValue: unknown): Promise<vscode.Uri> {
     if (typeof pathValue !== "string" || !pathValue.trim()) throw new Error("A relative path is required.");
-    const rel = pathValue.replace(/\\\\/g, "/");
+    const rel = pathValue.replace(/\\/g, "/");
     if (rel.startsWith("/") || /^[a-zA-Z]:/.test(rel) || rel.split("/").some(p => p === "..") || rel.includes("\0")) {
       throw new Error("Path must stay inside the workspace.");
     }
@@ -289,7 +317,7 @@ You may use list_files, read_file, search_code, and propose_file_change.`
       const language = this.guessLanguage(String(args.path));
       const doc = await vscode.workspace.openTextDocument({ language, content: oldText });
       const proposed = await vscode.workspace.openTextDocument({ language, content });
-      await vscode.commands.executeCommand("vscode.diff", doc.uri, proposed.uri, `CodePilot proposal: ${args.path}`);
+      await vscode.commands.executeCommand("vscode.diff", doc.uri, proposed.uri, `FreePilot proposal: ${args.path}`);
       const confirm = await vscode.window.showInformationMessage(
         `\`Apply proposed content to ${String(args.path)}?\``,
         { modal: true },

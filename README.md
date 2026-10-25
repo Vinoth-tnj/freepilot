@@ -15,12 +15,14 @@
 | Feature | Description |
 | :--- | :--- |
 | **Code Writing** | Generate functions, classes, and entire files from natural language prompts. |
-| **File Modification** | Propose targeted edits with diff previews; apply only after your approval. |
+| **File Modification** | Propose targeted edits with diff previews; apply only after your approval or auto-apply with undo. |
 | **Project Creation** | Scaffold new projects with configured layouts, dependencies, and configs. |
 | **Workspace Inspection** | List, read, and search files within the active workspace (respects `.gitignore`). |
 | **Tool‑Calling Agent** | Multi‑step reasoning loop that can iterate up to `maxAgentSteps` calls. |
+| **Dynamic Model Selector** | Fetch and switch between available chat-enabled models dynamically via FreeLLMAPI (`/v1/models?available=true`). |
+| **File Context Attachment** | Quickly attach open editor code context (`+`) to your prompts. |
 | **Secure API Key Storage** | Keys stored in VS Code `SecretStorage`; never committed to repo. |
-| **Approval‑First Workflow** | Every file change requires an explicit “Review & Apply” confirmation (or auto-applies with undo option). |
+| **Interactive Footer Controls** | Toggle permission modes (`manual` vs `auto`) and view status directly from the chat UI footer. |
 | **Webview Chat UI** | In‑VS Code chat interface with status, answers, and error reporting. |
 
 ---
@@ -42,8 +44,6 @@ flowchart TD
     J --> K["Display answer in Webview"]
     I --> L["Prompt user for new request"]
 ```
-
-**TL;DR:** User types → Agent selects tool → Tool executes inside workspace → Model decides next action → Diff shown (or auto-applied with Undo option based on mode) → File written → Agent loops or finishes.
 
 ---
 
@@ -69,23 +69,18 @@ Press **F5** to launch the Extension Development Host, or run:
 
 ```bash
 code .
-# Then open Command Palette (Cmd+Shift/P + Ctrl+Shift/P) and run
+# Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P) and run:
 #   FreePilot: Configure
 # Enter your FreeLLMAPI unified key when prompted.
 ```
-
-*Alternatively, store the key programmatically in your **VS Code settings** (`settings.json`).*
 
 ### 3️⃣ Run & Test
 
 - Press **F5** to start the Extension Development Host.
 - The **FreePilot** icon appears in the Activity Bar.
-- Open the **Agent Chat** panel and send a prompt like:
-  > "List the main project files and explain the architecture."
+- Use the chat footer toolbar to select your active model, attach file context, or switch permission modes!
 
-- The agent will list files, possibly read some, and answer.
-
-### 4️⃣ Package as VSIX (for distribution)
+### 4️⃣ Package as VSIX
 
 ```bash
 npm install
@@ -93,8 +88,6 @@ npm run compile
 npm install -g @vscode/vsce
 vsce package
 ```
-
-Install the generated `.vsix` via **Extensions: Install from VSIX...**
 
 ---
 
@@ -104,11 +97,13 @@ All settings are defined under the **FreePilot** category in VS Code settings (`
 
 | Setting | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `freepilot.baseUrl` | `string` | `""` | FreeLLMAPI OpenAI‑compatible base URL (leave empty for default). |
-| `freepilot.model` | `string` | `"auto"` | Model or routing profile, e.g. `auto`, `gpt-4o`, `claude-3.5-sonnet`. |
+| `freepilot.baseUrl` | `string` | `""` | FreeLLMAPI OpenAI‑compatible base URL. |
+| `freepilot.model` | `string` | `"auto"` | Active model or routing profile (updated dynamically via chat UI). |
 | `freepilot.maxAgentSteps` | `number` | `8` | Maximum tool‑call iterations per request (1‑20). |
-| `freepilot.applyMode` | `string` | `"manual"` | Permission mode: `"manual"` (requires diff approval) or `"auto"` (applies changes directly with undo option). |
-| `freepilot.apikey` | `string` | — | **Not a VS Code setting** — stored securely in VS Code SecretStorage via the *Configure* command. |
+| `freepilot.applyMode` | `string` | `"manual"` | Permission mode: `"manual"` (diff review) or `"auto"` (direct edit with undo). |
+| `freepilot.apikey` | `string` | — | Stored securely in VS Code `SecretStorage` via *Configure* command. |
+
+---
 
 > **Tip:** After changing any setting, reload the extension (`Ctrl+Shift+P` → *Developer: Reload Window*) or restart the host.
 
